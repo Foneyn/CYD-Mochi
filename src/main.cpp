@@ -1,65 +1,93 @@
-/*
- * Dasai Mochi animation port for ESP32-2432S028R (CYD 2.8")
- * TFT: ILI9341, 320x240, landscape
- * Source: 772 monochrome frames, 128x64, from supplied archive.
- */
+
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 #include "all_frames.h"
 
-TFT_eSPI tft = TFT_eSPI();
-static constexpr int16_t IMAGE_X = 0, IMAGE_Y = 40, IMAGE_W = 320, IMAGE_H = 160;
-static constexpr uint32_t FRAME_DELAY_MS = 42; // 24 FPS
-static uint16_t *frameBuffer = nullptr;
+TFT_eSPI tft;
 
-static inline bool sourcePixel(const uint8_t *bitmap, uint16_t x, uint16_t y) {
-  const uint32_t bitIndex = (uint32_t)y * FRAME_WIDTH + x;
-  const uint8_t value = pgm_read_byte(bitmap + (bitIndex >> 3));
-  return (value & (0x80u >> (bitIndex & 7u))) != 0;
+static uint16_t *lineBuffer = nullptr;
+
+static const uint32_t FRAME_DELAY = 60;
+
+bool getPixel(const uint8_t *bitmap, uint16_t x, uint16_t y) {
+    uint32_t index = (uint32_t)y * FRAME_WIDTH + x;
+    uint8_t byteValue = pgm_read_byte(bitmap + index / 8);
+    return (byteValue & (0x80 >> (index % 8))) != 0;
 }
 
-static void renderFrame(const uint8_t *bitmap) {
-  for (int16_t y = 0; y < IMAGE_H; ++y) {
-    const uint16_t sy = ((uint32_t)y * FRAME_HEIGHT) / IMAGE_H;
-    const uint32_t rowOffset = (uint32_t)y * IMAGE_W;
-    for (int16_t x = 0; x < IMAGE_W; ++x) {
-      const uint16_t sx = ((uint32_t)x * FRAME_WIDTH) / IMAGE_W;
-      frameBuffer[rowOffset + x] = sourcePixel(bitmap, sx, sy) ? TFT_WHITE : TFT_BLACK;
+void drawFrame(const uint8_t *bitmap) {
+    int16_t screenW = tft.width();
+    int16_t screenH = tft.height();
+
+    // Масштабирование с сохранением пропорций 2:1
+    int16_t imageW = screenW;
+    int16_t imageH = imageW * FRAME_HEIGHT / FRAME_WIDTH;
+
+    if (imageH > screenH) {
+        imageH = screenH;
+        imageW = imageH * FRAME_WIDTH / FRAME_HEIGHT;
     }
-  }
-  tft.pushImage(IMAGE_X, IMAGE_Y, IMAGE_W, IMAGE_H, frameBuffer);
+
+    int16_t startX = (screenW - imageW) / 2;
+    int16_t startY = (screenH - imageH) / 2;
+
+    tft.fillScreen(TFT_BLACK);
+
+    for (int16_t y = 0; y < imageH; y++) {
+        uint16_t sourceY = (uint32_t)y * FRAME_HEIGHT / imageH;
+
+        for (int16_t x = 0; x < imageW; x++) {
+            uint16_t sourceX = (uint32_t)x * FRAME_WIDTH / imageW;
+
+            lineBuffer[x] = getPixel(bitmap, sourceX, sourceY)
+                ? TFT_WHITE : TFT_BLACK;
+        }
+
+        tft.pushImage(startX, startY + y, imageW, 1, lineBuffer);
+    }
 }
 
 void setup() {
-  Serial.begin(115200);
-  delay(100);
-  pinMode(21, OUTPUT);
-  digitalWrite(21, HIGH);
-  tft.begin();
-  tft.setRotation(1);
-  tft.fillScreen(TFT_BLACK);
-  tft.setSwapBytes(true);
+    Serial.begin(115200);
 
-  frameBuffer = static_cast<uint16_t *>(malloc((size_t)IMAGE_W * IMAGE_H * sizeof(uint16_t)));
-  if (!frameBuffer) {
-    Serial.println("ERROR: cannot allocate RGB565 frame buffer");
-    tft.setTextColor(TFT_RED, TFT_BLACK);
-    tft.setTextSize(2);
-    tft.setCursor(10, 100);
-    tft.println("OUT OF RAM");
-    while (true) delay(1000);
-  }
-  Serial.printf("CYD ILI9341 ready; %u frames, %ux%u source, 24 FPS target\n",
-                (unsigned)TOTAL_FRAMES, (unsigned)FRAME_WIDTH, (unsigned)FRAME_HEIGHT);
+    // Подсветка CYD
+    pinMode(21, OUTPUT);
+    digitalWrite(21, HIGH);
+
+    delay(100);
+
+    tft.begin();
+
+    // Горизонтальная ориентация
+    tft.setRotation(1);
+    tft.fillScreen(TFT_BLACK);
+
+    Serial.printf("Display: %d x %d\n",
+                  tft.width(), tft.height());
+
+    lineBuffer = (uint16_t*)malloc(tft.width() * sizeof(uint16_t));
+
+    if (!lineBuffer) {
+        Serial.println("RAM allocation failed!");
+        tft.fillScreen(TFT_RED);
+        while (true) delay(1000);
+    }
+
+    Serial.printf("Frames: %d\n", TOTAL_FRAMES);
 }
 
 void loop() {
-  static uint16_t currentFrame = 0;
-  static uint32_t lastFrameTime = 0;
-  const uint32_t now = millis();
-  if ((uint32_t)(now - lastFrameTime) >= FRAME_DELAY_MS) {
-    lastFrameTime = now;
-    renderFrame(frames[currentFrame]);
-    currentFrame = (currentFrame + 1) % TOTAL_FRAMES;
-  }
+    static uint16_t frame = 0;
+    static uint32_t lastTime = 0;
+
+    if (millis() - lastTime >= FRAME_DELAY) {
+        lastTime = millis();
+
+        drawFrame(frames[frame]);
+
+        frame++;
+        if (frame >= TOTAL_FRAMES) {
+            frame = 0;
+        }
+    }
 }
