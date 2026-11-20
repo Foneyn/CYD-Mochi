@@ -57,10 +57,8 @@ void setup() {
     delay(100);
 
     tft.begin();
-
-    // Горизонтальная ориентация
     tft.setRotation(1);
-    tft.fillScreen(TFT_BLACK);
+    tft.invertDisplay(true);
 
     Serial.printf("Display: %d x %d\n",
                   tft.width(), tft.height());
