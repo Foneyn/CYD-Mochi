@@ -22,13 +22,15 @@ jobs:
       - name: Build firmware
         run: pio run -e cyd-esp32-2432s028r
 
-      - name: Upload complete firmware package
+      - name: Find and copy boot_app0
+        run: |
+          BOOT_APP0=$(find ~/.platformio/packages -name boot_app0.bin -print -quit)
+          test -n "$BOOT_APP0"
+          cp "$BOOT_APP0" .pio/build/cyd-esp32-2432s028r/boot_app0.bin
+
+      - name: Upload complete firmware
         uses: actions/upload-artifact@v4
         with:
           name: cyd-complete-firmware
-          path: |
-            .pio/build/cyd-esp32-2432s028r/bootloader.bin
-            .pio/build/cyd-esp32-2432s028r/partitions.bin
-            .pio/build/cyd-esp32-2432s028r/boot_app0.bin
-            .pio/build/cyd-esp32-2432s028r/firmware.bin
+          path: .pio/build/cyd-esp32-2432s028r/*.bin
           if-no-files-found: error
