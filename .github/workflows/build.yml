@@ -20,7 +20,7 @@ jobs:
         run: pip install platformio
 
       - name: Build firmware
-        run: pio run -e cyd-esp32-2432s028r
+        run: pio run -e cyd-esp32-2432s028
 
       - name: Find and copy boot_app0
         run: |
