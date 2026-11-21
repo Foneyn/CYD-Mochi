@@ -1,0 +1,41 @@
+name: Build CYD firmware
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build firmware
+        run: pio run -e cyd-esp32-2432s028
+
+      - name: Find and copy boot_app0
+        shell: bash
+        run: |
+          BUILD_DIR=".pio/build/cyd-esp32-2432s028"
+          test -d "$BUILD_DIR"
+          BOOT_APP0="$(find ~/.platformio/packages -name boot_app0.bin -print -quit)"
+          if [ -z "$BOOT_APP0" ]; then
+            echo "boot_app0.bin was not found in PlatformIO packages"
+            exit 1
+          fi
+          cp "$BOOT_APP0" "$BUILD_DIR/boot_app0.bin"
+
+      - name: Upload complete firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyd-complete-firmware
+          path: .pio/build/cyd-esp32-2432s028/*.bin
+          if-no-files-found: error
